@@ -1,0 +1,17 @@
+---
+- hosts: master
+  become: yes
+
+  tasks:
+  - name: Initialize Swarm
+    shell: docker swarm init
+    register: swarm_init
+    changed_when: "'initialized' in swarm_init.stdout"
+
+  - name: Get Swarm Join Token
+    shell: docker swarm join-token -q worker
+    register: join_token
+
+  - name: Set Swarm Join Token as Fact
+    set_fact:
+      swarm_join_token: "{{ join_token.stdout_lines[0] }}"

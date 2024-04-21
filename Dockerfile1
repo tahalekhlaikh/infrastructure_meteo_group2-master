@@ -1,0 +1,16 @@
+FROM node:18.12.0 as develop-stage
+WORKDIR /projet_site_web_meteo_msicd
+ENV PATH /projet_site_web_meteo_msicd/node_modules/.bin:$PATH
+COPY package.json /projet_site_web_meteo_msicd/package.json
+RUN npm install 
+COPY . /projet_site_web_meteo_msicd
+RUN npm run build
+
+# production stage
+FROM nginx:1.15.7-alpine as production-stage
+COPY --from=develop-stage /projet_site_web_meteo_msicd/dist /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+
+
+

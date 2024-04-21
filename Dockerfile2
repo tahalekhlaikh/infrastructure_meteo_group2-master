@@ -1,0 +1,17 @@
+FROM nginx:stable
+
+WORKDIR /projet_site_web_meteo_msicd
+
+COPY . /projet_site_web_meteo_msicd
+COPY package.json /projet_site_web_meteo_msicd/package.json
+RUN apt update
+
+ENV METEO_URL_SERVERNAME=localhost
+ENV METEO_URL_PORT=80
+ENV METEO_FRONTEND_ROOT=/projet_site_web_meteo_msicd/dist
+
+EXPOSE 80
+CMD envsubst '${METEO_URL_SERVERNAME},${METEO_URL_PORT},${METEO_FRONTEND_ROOT}' < nginx.conf.template > nginx.conf ;\
+    cp nginx.conf /etc/nginx/conf.d/default.conf ;\ 
+    nginx -g "daemon off;";
+

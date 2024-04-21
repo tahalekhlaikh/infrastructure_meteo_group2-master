@@ -1,0 +1,12 @@
+- name: Initialize a Docker Swarm cluster
+  hosts: master
+  tasks:
+    - name: copying file with playbook
+      become: true 
+      copy:
+        src: docker-compose.yml
+        dest: /home/ubuntu/docker-compose.yml
+
+    - name: Get IP addresses from file and format as comma-separated list
+      shell: |
+       docker service create --name meteo --replicas 3  --constraint node.role==worker  --publish published=8000,target=80 gitlab-registry.imt-atlantique.fr/k22mobsi/infrastructure_meteo_group2/meteoprod:latest

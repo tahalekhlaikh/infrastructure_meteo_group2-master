@@ -1,0 +1,29 @@
+- hosts: master
+  become: true
+  tasks:
+    - name: Update package lists
+      apt:
+        update_cache: yes
+
+    - name: Install haproxy
+      apt:
+        name: haproxy
+        state: present
+    - name: Fetch file from remote system
+      copy:
+        src: ./haproxy.cfg.j2
+        dest: /home/ubuntu/haproxy.cfg.j2
+        mode: '0777'
+    - name: Replace variables in haproxy.cfg
+      template:
+        src: haproxy.cfg.j2
+        dest: /etc/haproxy/haproxy.cfg
+      vars:
+        worker1_private_ip: "{{ hostvars['worker1']['ansible_host'] }}"
+        worker2_private_ip: "{{ hostvars['worker2']['ansible_host'] }}"
+        worker3_private_ip: "{{ hostvars['worker3']['ansible_host'] }}"
+        port: "8000"
+    - name: Start haproxy service
+      service:
+        name: haproxy
+        state: started

@@ -1,0 +1,276 @@
+stages:
+  - test
+  - build
+  - terraform
+  - destroy
+  - deploy
+
+dist-job:       # This job runs in the build stage, which runs first.
+  stage: test
+  tags:
+    - ms-icd
+  image: node:18.15.0
+  script:
+    - npm install
+    - npm run build
+  artifacts:
+   paths:
+      - dist
+  when: always
+
+.test_meteo:
+  image : node
+  tags:
+    - ms-icd
+  stage : test
+.test_docker:
+  tags:
+    - ms-icd
+  image : hadolint/hadolint:latest-debian
+  stage: test
+
+test_jshint:
+    extends: .test_meteo
+    script:
+        - npm install -g jshint
+        - jshint src > result-jshint.txt || exit 0
+    
+    artifacts:
+        paths:
+         - result-jshint.txt
+
+lint_eslint:
+  extends: .test_meteo
+  needs: 
+      - dist-job
+  stage: test
+  script:
+    - npm install eslint --save-dev
+    - npm run lint | tee lint_js.txt || true
+  artifacts:
+      paths:
+          - lint_js.txt
+
+test_standardJS:
+    stage: test
+    needs: 
+      - dist-job
+    extends: .test_meteo
+    script:
+        - npm install standard --global
+        - npx standard > result-standardJS.txt || exit 0
+    artifacts:
+        paths:
+         - result-standardJS.txt
+        
+
+lint_html_validate:
+  extends: .test_meteo
+  stage: test
+  script:
+    - npm install -g html-validate
+    - html-validate ./index.html | tee lint_html.txt || true
+  artifacts:
+      paths:
+          - lint_html.txt
+
+lint_htmlhint:
+  extends: .test_meteo
+  stage: test
+  script:
+    - npm install -g htmlhint
+    - htmlhint ./index.html | tee lint_htmlhint.txt || true
+  artifacts:
+      paths:
+          - lint_htmlhint.txt
+
+test_jshint-dist:
+    needs: 
+      - dist-job
+    stage: test
+    extends: .test_meteo
+    script:
+        - npm install -g jshint
+        - jshint dist > result-dist-jshint.txt || exit 0
+    
+    artifacts:
+        paths:
+         - result-dist-jshint.txt
+
+
+lint_html_validate-dist:
+  needs: 
+      - dist-job
+  stage: test
+  extends: .test_meteo
+  script:
+    - npm install -g html-validate
+    - html-validate dist/index.html | tee lint_html-dist.txt || true
+  artifacts:
+      paths:
+          - lint_html-dist.txt
+
+lint_htmlhint-dist:
+  needs: 
+      - dist-job
+  stage: test
+  extends: .test_meteo
+  artifacts:
+      paths:
+          - lint_htmlhint-dist.txt
+  script:
+    - npm install -g htmlhint
+    - htmlhint dist/index.html | tee lint_htmlhint-dist.txt || true
+
+
+.install_firefox_geckodriver: &install_firefox_geckodriver
+  - apt-get update && apt-get upgrade --assume-yes
+  - apt-get install gconf-service libasound2 libatk1.0-0 libc6 libcairo2 libcups2 libdbus-1-3 libexpat1 libfontconfig1 libgcc1 libgconf-2-4 libgdk-pixbuf2.0-0 libglib2.0-0 libgtk-3-0 libnspr4 libpango-1.0-0 libpangocairo-1.0-0 libstdc++6 libx11-6 libx11-xcb1 libxcb1 libxcomposite1 libxcursor1 libxdamage1 libxext6 libxfixes3 libxi6 libxrandr2 libxrender1 libxss1 libxtst6 ca-certificates fonts-liberation libappindicator1 libnss3 lsb-release xdg-utils --assume-yes
+  - wget -nv -O ~/FirefoxSetup.tar.bz2 "https://download.mozilla.org/?product=firefox-latest&os=linux64"
+  - tar xjf ~/FirefoxSetup.tar.bz2 -C /opt/
+  - ln -s /opt/firefox/firefox /usr/lib/firefox
+  - export PATH=$PATH:/opt/firefox/
+  - wget -nv -O ~/geckodriver.tar.gz "https://github.com/mozilla/geckodriver/releases/download/v0.28.0/geckodriver-v0.28.0-linux64.tar.gz"
+  - tar -zxvf ~/geckodriver.tar.gz -C /opt/
+  - export PATH=$PATH:/opt/
+
+  
+test_Automation:
+  image: python:3.8
+  stage: test
+  tags:
+    - ms-icd
+  services:
+    - selenium/standalone-firefox:latest
+  artifacts:
+      paths:
+        - automation_selenium.txt
+  script:
+    - *install_firefox_geckodriver
+    - pip install 'selenium<4.0.0' # Nous avons rétrogradé Selenium aux niveaux 3 car nous avons une ancienne version de geckodriver
+    - pip install selenium pytest
+    - pytest | tee automation_selenium.txt || true
+    
+
+lint_docker1:
+  extends: .test_docker
+  artifacts:
+      paths:
+          - lint_docker1.txt
+  script:
+    - hadolint ./Dockerfile1 | tee lint_docker1.txt || true
+
+lint_docker2:
+  extends: .test_docker
+  artifacts:
+      paths:
+          - lint_docker2.txt
+  script:
+    - hadolint ./Dockerfile2 | tee lint_docker2.txt || true
+
+pages:
+    stage: deploy
+    tags : 
+      - ms-icd 
+    artifacts:
+        paths:
+            - public/
+    script:
+        - cp pages/index.html public/ 
+        - cp result-jshint.txt public/
+        - cp result-dist-jshint.txt public/
+        - cp result-standardJS.txt public/
+        - cp lint_html.txt public/
+        - cp lint_html-dist.txt public/
+        - cp lint_htmlhint.txt public/
+        - cp lint_htmlhint-dist.txt public/
+        - cp lint_js.txt public/
+        - cp lint_docker1.txt public/
+        - cp lint_docker2.txt public/
+        - cp automation_selenium.txt public/
+       
+build-job:
+  needs: 
+    - dist-job
+  tags:
+    - ms-icd  
+      # This job runs in the build stage, which runs first.
+  stage: build
+  image: docker:19.03
+  script:
+    - docker login -u $CI_REGISTRY_USER -p $CI_REGISTRY_PASSWORD $CI_REGISTRY
+    - docker build -t $CI_REGISTRY_IMAGE/meteoprod -f Dockerfile2 .
+    - docker push $CI_REGISTRY_IMAGE/meteoprod 
+
+
+terraform:
+  stage: terraform
+  image:
+   name: hashicorp/terraform:light
+   entrypoint:
+    - '/usr/bin/env'
+    - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+  script:
+   - rm -rf .terraform
+   - terraform --version
+   - cd terraform
+   - export OS_AUTH_URL=${OS_AUTH_URL}
+   - export OS_PROJECT_ID=${OS_PROJECT_ID}
+   - export OS_PROJECT_NAME=${OS_PROJECT_NAME}
+   - export OS_USER_DOMAIN_NAME=${OS_USER_DOMAIN_NAME}
+   - export OS_PROJECT_DOMAIN_ID=${OS_PROJECT_DOMAIN_ID}
+   - export OS_REGION_NAME=${OS_REGION_NAME}
+   - export OS_INTERFACE=${OS_INTERFACE}
+   - export OS_USERNAME=${OS_USERNAME}
+   - export OS_PASSWORD=${OS_PASSWORD}
+   - export OS_IDENTITY_API_VERSION=${OS_IDENTITY_API_VERSION}
+   - terraform init
+   - mkdir -p ~/.ssh 
+   - echo "$ssh_public_key"  > ~/.ssh/id_rsa.pub
+   - terraform validate
+   - terraform plan
+   - terraform apply  -state=terraform.tfstate -auto-approve
+  artifacts:
+    paths:
+      - terraform/terraform.tfstate
+      - terraform/hosts.ini
+      - terraform/ips_cluster
+      
+destroy:
+  stage: destroy
+  image:
+   name: hashicorp/terraform:light
+   entrypoint:
+     - '/usr/bin/env'
+     - 'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin'
+  script:
+    - terraform destroy -state=terraform.tfstate -auto-approve
+  when: manual
+
+  
+ansible:
+  image: ubuntu:20.04
+  stage: deploy
+  tags:
+    - ansi-vap
+  before_script:
+    - ls -l
+    - cd ansible
+    - mv ../terraform/hosts.ini inventory
+    - mv ../terraform/ips_cluster ips_cluster
+  script:
+   -  apt update && apt upgrade -y
+   -  apt-get install  python3.6 python3-pip -y 
+   -  pip install ansible ansible-core
+   - command -v ssh-agent > /dev/null || ( apt-get install -y  openssh-client)
+   - eval $(ssh-agent -v)
+   - mkdir -p ~/.ssh
+   - echo "$ssh_private_key" | tr -d '\r' > ~/.ssh/id_rsa
+   - chmod 700 ~/.ssh/id_rsa
+   - cat ~/.ssh/id_rsa
+   - ansible all --ssh-extra-args="-o StrictHostKeyChecking=no" -m ping -i inventory
+   - ansible-playbook -i inventory init-cluster.yaml
+   - ansible-playbook -i inventory join-cluster.yaml
+   - ansible-playbook -i inventory haproxy.yaml
+   - ansible-playbook -i inventory service.yaml
+

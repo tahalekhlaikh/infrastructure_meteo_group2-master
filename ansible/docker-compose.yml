@@ -1,0 +1,12 @@
+version: '3'
+
+services:
+  meteo:
+    image: gitlab-registry.imt-atlantique.fr/w22elmou/build-pindustriel/meteoprod:latest
+    deploy:
+     replicas: 3
+     placement:
+      constraints:
+       - node.role == worker
+    ports:
+      - "8000:80"
